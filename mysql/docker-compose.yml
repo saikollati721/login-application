@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  mysql:
+    image: mysql:8.1.0
+    container_name: mysql-8.1.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./.data8.1/db_data:/var/lib/mysql
+      - ./init-scripts:/docker-entrypoint-initdb.d
