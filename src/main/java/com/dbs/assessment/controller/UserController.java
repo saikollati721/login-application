@@ -36,18 +36,11 @@ public class UserController {
     public Page<UserDTO> index(
             UserSpecificationBuilder builder, @PageableDefault(value = 25, page = 0) Pageable pageable) {
         log.info("Request GET /user/list");
-        User user = service.fetchUser();
 
         Specification<User> spec = builder.build();
         Page<User> users = service.findAll(spec, pageable);
         List<UserDTO> userDTOS = mapper.map(users.getContent());
         return new PageImpl<>(userDTOS, pageable, users.getTotalElements());
-    }
-
-    @GetMapping
-    public UserDTO show() throws Exception {
-        log.info("Request GET /user");
-        return mapper.map(service.getLoggedInUser().orElseThrow(() -> new UserNotFoundException("User Not found")));
     }
 
     @PostMapping
@@ -58,7 +51,6 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ADMIN')")
     public UserDTO update(@PathVariable(value = "id") Long id, @RequestBody UserRequest request) throws Exception {
         log.info(String.format("Request PUT /user/%d with request : " + request, id));
         User user = service.findById(id);
@@ -67,14 +59,4 @@ public class UserController {
         return mapper.map(user);
     }
 
-    @PostMapping("/invite")
-    @PreAuthorize("hasAuthority('SUPER_ADMIN')")
-    public UserDTO inviteUser(@RequestBody UserRequest request) {
-        log.info("Request POST /user/invite");
-        request.setPassword(passwordEncoder.encode(request.getPassword()));
-        User user = mapper.map(request);
-        //        user.setStatus(UserStatus.ACTIVE);
-        service.save(user);
-        return mapper.map(user);
-    }
 }

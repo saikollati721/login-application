@@ -2,6 +2,7 @@ package com.dbs.assessment.security;
 
 import com.dbs.assessment.enums.LoginStatus;
 import com.dbs.assessment.exception.AccountLockedException;
+import com.dbs.assessment.exception.UserNotFoundException;
 import com.dbs.assessment.mapper.LoginTrackerMapper;
 import com.dbs.assessment.model.LoginTracker;
 import com.dbs.assessment.model.User;
@@ -18,6 +19,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -31,37 +33,32 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Log4j2
 public class LoginFilter extends AbstractAuthenticationProcessingFilter {
 
-    @Autowired
-    private UserService userService;
-
-    @Autowired
-    private LoginTrackerService loginTrackerService;
-
-    @Autowired
-    private LoginTrackerMapper loginTrackerMapper;
-
+    private final RequestMatcher loginRequestMatcher = new AntPathRequestMatcher("/login", HttpMethod.POST.toString());
     @Autowired
     JWTTokenService jwtService;
-
     @Autowired
     BCryptPasswordEncoder passwordEncoder;
-
     @Autowired
     AuthenticationManager authenticationManager;
-
-    private final RequestMatcher loginRequestMatcher = new AntPathRequestMatcher("/login", HttpMethod.POST.toString());
+    @Autowired
+    private UserService userService;
+    @Autowired
+    private LoginTrackerService loginTrackerService;
+    @Autowired
+    private LoginTrackerMapper loginTrackerMapper;
 
     public LoginFilter(String string) {
         super(string);
     }
 
-    @Override
-    public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response)
+    public Authentication doFilter(HttpServletRequest request, HttpServletResponse response)
             throws AuthenticationException, IOException, ServletException {
 
         Authentication auth = null;
@@ -69,8 +66,8 @@ public class LoginFilter extends AbstractAuthenticationProcessingFilter {
             try {
                 LoginRequest loginRequest = new ObjectMapper().readValue(request.getInputStream(), LoginRequest.class);
                 log.info(String.format("Attempting Authentication for username : %s", loginRequest.getUserName()));
-                List<LoginTracker> loginRecords = loginTrackerService.findByUserNameAndStatus(loginRequest.getUserName(), LoginStatus.FAILURE);
-                if(loginRecords.size() >3){
+                List<LoginTracker> loginRecords = loginTrackerService.findByCreatedDateIsGreaterThanEqualAndCreatedDateIsLessThanEqualAndUserNameAndStatus(loginRequest.getUserName(), LoginStatus.FAILURE);
+                if (loginRecords.size() > 3) {
                     throw new AccountLockedException("Account Locked, Try again after some time");
                 }
                 User user = userService.loadUserByUsername(loginRequest.getUserName());
@@ -81,34 +78,21 @@ public class LoginFilter extends AbstractAuthenticationProcessingFilter {
                     auth = new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
                 } else {
                     loginTracker.setStatus(LoginStatus.FAILURE);
-                    response.setStatus(423);
                     loginTrackerService.save(loginTracker);
-                    throw new Exception("Authentication Failure, Invalid Password");
+                    throw new UserNotFoundException("Authentication Failure, Invalid Password");
                 }
-            } catch(AccountLockedException e){
-                logger.error(e.getMessage(), e);
-                throw new AccountLockedException("Account Locked, Try again after some time");
-            }catch (Exception e) {
+            } catch (Exception e) {
+                response.setContentType("application/json");
+                response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                ObjectMapper objectMapper = new ObjectMapper();
+                Map<String, List<String>> errorMessagesMap = new HashMap<>();
+                errorMessagesMap.put("errorMessages", List.of(e.getMessage()));
+                response.getWriter().write(objectMapper.writeValueAsString(errorMessagesMap));
                 log.error(e.getMessage(), e);
-                throw new RuntimeException(e);
             }
         }
         return auth;
     }
-
-//    @Override
-//    protected void unsuccessfulAuthentication(HttpServletRequest request, HttpServletResponse response, AuthenticationException failed) throws IOException {
-//        if(failed instanceof AccountLockedException) {
-//
-////            throw new AccountLockedException("Authentication failed: " + failed.getMessage());
-//            response.setStatus(423);
-//            response.setContentType("application/json;charset=UTF-8");
-//            Map<String, List<String>> errorMessagesMap = new HashMap<>();
-//            errorMessagesMap.put("errorMessages", List.of(failed.getMessage()));
-//            response.getWriter().write(errorMessagesMap.toString());
-//        }
-//        throw failed;
-//    }
 
     private Boolean authenticate(UserDetails userDetails, LoginRequest loginRequest) {
         return passwordEncoder.matches(loginRequest.getPassword(), userDetails.getPassword());
@@ -121,6 +105,13 @@ public class LoginFilter extends AbstractAuthenticationProcessingFilter {
     @Override
     protected boolean requiresAuthentication(HttpServletRequest request, HttpServletResponse response) {
         return super.requiresAuthentication(request, response) && isLoginRequest(request);
+    }
+
+    @Override
+    public Authentication attemptAuthentication(HttpServletRequest request,
+                                                HttpServletResponse response)
+            throws AuthenticationException, IOException, ServletException {
+        return doFilter(request, response);
     }
 
     @Override

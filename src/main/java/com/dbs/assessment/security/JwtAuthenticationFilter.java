@@ -1,7 +1,6 @@
 package com.dbs.assessment.security;
 
 import com.dbs.assessment.constant.URLConstants;
-import com.dbs.assessment.exception.AccountLockedException;
 import com.dbs.assessment.model.User;
 import com.dbs.assessment.service.JWTTokenService;
 import com.dbs.assessment.service.UserService;
@@ -13,6 +12,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -65,12 +65,7 @@ public class JwtAuthenticationFilter extends AbstractAuthenticationProcessingFil
             auth = new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
         }
         if (auth == null) {
-//            if(response.getStatus() == 423){
-//                throw  new AccountLockedException("Account Locked, Try again after some time");
-//            }
-            throw  new AccountLockedException("Account Locked, Try again after some time");
-
-//            throw new BadCredentialsException("AUTH TOKEN MISSING");
+            throw new BadCredentialsException("AUTH TOKEN MISSING");
         }
         return auth;
     }
@@ -88,13 +83,6 @@ public class JwtAuthenticationFilter extends AbstractAuthenticationProcessingFil
         chain.doFilter(request, response);
     }
 
-
-//    @Override
-//    protected void unsuccessfulAuthentication(HttpServletRequest request, HttpServletResponse response, AuthenticationException failed) {
-//        if(failed instanceof AccountLockedException)
-//            throw new AccountLockedException("Authentication failed: " + failed.getMessage());
-//        throw failed;
-//    }
 
     private String getJWTCookieValue(HttpServletRequest request) {
         String cookieValue = null;
